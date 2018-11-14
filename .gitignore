@@ -1,0 +1,6 @@
+*
+!*.h
+!*.cpp
+!CMakeLists.txt
+!.gitignore
+!CMPE250Fall2018Project2.pdf
