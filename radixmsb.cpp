@@ -1,8 +1,15 @@
 #include <iostream>
 #include <pthread.h>
+#include <fstream>
+#include <sstream>
+#include <random>
+#include <mutex>
+#include <thread>
 
 #define MAX_THREAD 4
 using namespace std;
+
+int SIZE = 0;
 
 struct thread_data {
     int *arr;
@@ -10,6 +17,82 @@ struct thread_data {
     int end;
     int exp;
 };
+
+struct thread_data_p {
+    int *arr;
+    int size;
+    int exp;
+};
+
+int getMax(int arr[], int n);
+
+int *countSort(int arr[], int n, int exp);
+
+void countSortThread(void *thread_arg);
+
+void radixSort(int arr[], int n);
+
+void write_file(char* path, int *arr, int n);
+
+int* read_file(char* path);
+
+int main(int argc, char *argv[]) {
+
+    if (argc < 2) {
+        cout << "wrong argument" << endl;
+        return 1;
+    }
+    int* arr = read_file(argv[1]);
+
+    int n = SIZE;
+
+    radixSort(arr, n);
+
+    //write_file(argv[2], arr, n);
+//        constexpr unsigned num_threads = 6;
+         // mutex ensures orderly access to std::cout from multiple threads.
+//        std::mutex iomutex;
+//        std::vector<std::thread> threads(num_threads);
+//        for (unsigned i = 0; i < num_threads; ++i) {
+//            threads[i] = std::thread([] {
+//                while (1) {
+//                    {
+//                        // Use a lexical scope and lock_guard to safely lock the mutex only
+//                        // for the duration of std::cout usage.
+////                        std::lock_guard<std::mutex> iolock(iomutex);
+////                        std::cout << "Thread #" << i << ": on CPU " << sched_getcpu() << "\n";
+//                    }
+//
+//                    // Simulate important work done by the tread by sleeping for a bit...
+//                    //std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+//                }
+//            });
+//        }
+//
+//        for (auto& t : threads) {
+//            cout << "threads joining" << endl;
+//            t.join();
+//        }
+//        return 0;
+//    std::random_device rd; // obtain a random number from hardware
+//    std::mt19937 eng(rd()); // seed the generator
+//    std::uniform_int_distribution<> distr(100000000, 1000000000); // define the range
+//
+//    ofstream file;
+//
+//    file.open(argv[2]);
+//
+//    if(!file.is_open()) {
+//        cout << "cannot write file, aborting...";
+//        exit(1);
+//    }
+//
+//    for(int i = 0; i < 10000000; i++) {
+//        file << distr(eng)  << endl;
+//    }
+//
+//    file.close();
+}
 
 int getMax(int arr[], int n) {
 
@@ -55,17 +138,19 @@ int *countSort(int arr[], int n, int exp) {
     return count_copy;
 }
 
-void *countSortThread(void *thread_arg) {
+void countSortThread(void *thread_arg) {
 
-    struct thread_data *my_data;
+    struct thread_data_p *my_data;
 
-    my_data = (struct thread_data *) thread_arg;
+    my_data = (struct thread_data_p *) thread_arg;
 
-    int output[my_data->end - my_data->start]; // output array
+    int size = my_data->size;
+
+    int output[my_data->size]; // output array
     int i, count[10] = {0};
 
     // Store count of occurrences in count[]
-    for (i = my_data->start; i < my_data->end; i++)
+    for (i = 0; i < my_data->size; i++)
         count[(my_data->arr[i] / my_data->exp) % 10]++;
 
     // Change count[i] so that count[i] now contains actual
@@ -74,17 +159,16 @@ void *countSortThread(void *thread_arg) {
         count[i] += count[i - 1];
 
     // Build the output array
-    for (i = my_data->end - 1; i >= my_data->start; i--) {
+    for (i = my_data->size - 1; i >= 0; i--) {
         output[count[(my_data->arr[i] / my_data->exp) % 10] - 1] = my_data->arr[i];
         count[(my_data->arr[i] / my_data->exp) % 10]--;
     }
 
     // Copy the output array to arr[], so that arr[] now
     // contains sorted numbers according to current digit
-    for (i = my_data->start; i < my_data->end; i++)
+    for (i = 0; i < my_data->size; i++)
         my_data->arr[i] = output[i];
 
-    pthread_exit(NULL);
 }
 
 void radixSort(int arr[], int n) {
@@ -96,64 +180,127 @@ void radixSort(int arr[], int n) {
 
     int *thread_divide = countSort(arr, n, exp);
 
-//    for (int i = 0; i < 10; i++)
-//        cout << thread_divide[i] << endl;
+    exp /= 10;
 
-    pthread_t threads[10];
-    thread_data data[10];
+    thread_data_p data[10];
 
-    pthread_attr_t attr;
-    void * status;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    int last = 0;
+    int fexp = 1;
+    for (int i = 0; i < 10; i++) {
+        data[i].arr = &arr[last];
+        data[i].size = thread_divide[i];
+        last += thread_divide[i];
+        cout << thread_divide[i] << endl;
+    }
 
 
 
     int rc;
-    int last = 0;
-    exp /= 10;
-    for (int i = 0; exp >= 1; exp /= 10) {
-        cout << "exp " << exp;
-        for (int i = 0; i < 10; i++) {
-            data[i].arr = arr;
-            data[i].start = last;
-            data[i].end = thread_divide[i];
-            data[i].exp = exp;
-            last += thread_divide[i];
+    int thread_active[10] = {0};
 
-            rc = pthread_create(&threads[i], &attr, countSortThread, (void *) &data[i]);
-            if(rc) {
-                cout << "Error creating thread" << endl;
-                exit(-1);
+    for (int fexp = 1; m/(10*fexp) > 0; fexp *= 10) {
+        std::vector<std::thread> threads(10);
+
+//        pthread_t threads[10];
+//
+//        pthread_attr_t attr;
+//        void * status;
+//        pthread_attr_init(&attr);
+//        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+        //cout << "exp " << exp;
+        for (int i = 0; i < 10; i++) {
+            data[i].exp = fexp;
+
+            if(data[i].size != 0) {
+                thread_active[i] = 1;
+//                cout << "Creating thread " << i << endl;
+
+                threads[i] = std::thread([data, i] {
+                    //while (true) {
+
+                    countSortThread((void *) &data[i]);
+                        // Simulate important work done by the tread by sleeping for a bit...
+//                        std::this_thread::sleep_for(std::chrono::milliseconds(900));
+                    //}
+                });
+//                rc = pthread_create(&threads[i], &attr, countSortThread, (void *) &data[i]);
+//                if(rc) {
+//                    cout << "Error creating thread" << endl;
+//                    exit(-1);
+//                }
             }
         }
-    }
-    pthread_attr_destroy(&attr);
 
-    for(int i = 0; i < 10; i++) {
-        rc = pthread_join(threads[i], &status);
+//        pthread_attr_destroy(&attr);
 
-        if(rc) {
-            cout << "Unable to join the thread " << i << " " << rc << endl;
-            exit(-1);
+        for(int i = 0; i < 10; i++) {
+            if(thread_active[i] == 0) {
+                continue;
+            }
+            threads[i].join();
+//            thread_active[i] = 0;
+//
+//            rc = pthread_join(threads[i], &status);
+//            cout << "Status " << status;
+//            if(rc) {
+//                cout << "Unable to join the thread " << i << " " << rc << endl;
+//                exit(-1);
+//            }
         }
+    }
+}
 
-        cout << "completed thread " << i << endl;
-        cout << "exiting with status " << status << endl;
+int* read_file(char* path) {
 
+    ifstream input_file(path);
+
+    if(!input_file.is_open()) {
+        cout << "cannot read file, aborting...";
+        exit(1);
+    }
+
+    string line;
+    getline(input_file, line);
+
+    int size;
+
+    istringstream first_line(line);
+
+    first_line >> size;
+
+    SIZE = size;
+
+    int *arr = new int[size]();
+
+
+    for( int i = 0; i < size; i++) {
+        getline(input_file, line);
+
+        istringstream iss(line);
+
+        int a;
+        iss >> a;
+        arr[i] = a;
+    }
+
+    return arr;
+}
+
+
+void write_file(char* path, int* arr, int n) {
+
+    ofstream file;
+
+    file.open(path);
+
+    if(!file.is_open()) {
+        cout << "cannot write file, aborting...";
+        exit(1);
     }
 
     for(int i = 0; i < n; i++) {
-        cout << arr[i] << endl;
+        file << arr[i] << endl;
     }
 
-    int k = 2;
-
-}
-
-int main(int argc, char *argv[]) {
-    int arr[] = {19, 22, 35, 84, 12, 23, 54};
-    int n = sizeof(arr) / sizeof(arr[0]);
-
-    radixSort(arr, n);
+    file.close();
 }
